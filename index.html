@@ -68,7 +68,7 @@
 
     <script>
     // This is a self-contained vanilla JavaScript application. It does NOT use React.
-    // Make sure to save this file with an .html extension and open it in a browser.
+    // To deploy to GitHub Pages, save this file as "index.html" in your repository.
     document.addEventListener('DOMContentLoaded', () => {
         // --- DOM Elements ---
         const flowchartContainer = document.getElementById('flowchart-container');
@@ -167,8 +167,9 @@
                 
                 // --- Node Controls (Delete, Connect) ---
                 const deleteBtn = document.createElement('div');
-                deleteBtn.className = `absolute -top-3 -right-3 p-1 bg-white rounded-full shadow-md cursor-pointer hover:bg-red-100 transition-colors`;
-                deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-500"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+                deleteBtn.className = `absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center bg-red-500 text-white rounded-full shadow-md cursor-pointer hover:bg-red-700 transition-colors`;
+                deleteBtn.innerHTML = `&times;`; // Using HTML entity for 'X' for better compatibility
+                deleteBtn.title = "Delete Node";
                 deleteBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     deleteNode(node.id);
@@ -177,6 +178,7 @@
                 const connectHandle = document.createElement('div');
                 connectHandle.className = `absolute top-1/2 -translate-y-1/2 -right-6 p-1 bg-white rounded-full shadow-md cursor-ew-resize hover:bg-blue-100 transition-colors`;
                 connectHandle.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-blue-500"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`;
+                connectHandle.title = "Connect Node";
                 connectHandle.addEventListener('mousedown', (e) => {
                     e.stopPropagation();
                     startConnection(node.id);
