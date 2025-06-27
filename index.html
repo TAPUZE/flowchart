@@ -1,0 +1,342 @@
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Plus, ArrowRight, Trash2, Edit3, Save, Upload } from 'lucide-react';
+
+// Main App Component
+export default function App() {
+    const [nodes, setNodes] = useState([
+        { id: 1, x: 50, y: 150, text: 'Start', type: 'start' },
+        { id: 2, x: 300, y: 150, text: 'Process 1', type: 'process' },
+        { id: 3, x: 550, y: 150, text: 'Decision', type: 'decision' },
+        { id: 4, x: 800, y: 150, text: 'End', type: 'end' },
+    ]);
+    const [edges, setEdges] = useState([
+        { from: 1, to: 2 },
+        { from: 2, to: 3 },
+        { from: 3, to: 4 },
+    ]);
+    const [draggingNode, setDraggingNode] = useState(null);
+    const [connectingNode, setConnectingNode] = useState(null);
+    const [editingNode, setEditingNode] = useState(null);
+    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+    const flowChartRef = useRef(null);
+
+    // Get Bounding Box of the flowchart area
+    const getFlowChartBoundingBox = () => {
+        return flowChartRef.current ? flowChartRef.current.getBoundingClientRect() : null;
+    };
+
+    // Handle Mouse Down on a Node for Dragging
+    const handleNodeMouseDown = (e, nodeId) => {
+        e.stopPropagation();
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+            setDraggingNode({
+                id: nodeId,
+                offsetX: e.clientX - node.x,
+                offsetY: e.clientY - node.y,
+            });
+        }
+    };
+
+    // Handle Mouse Move for Dragging and Drawing new Edges
+    const handleMouseMove = useCallback((e) => {
+        const bbox = getFlowChartBoundingBox();
+        if (!bbox) return;
+
+        const newMouseX = e.clientX - bbox.left;
+        const newMouseY = e.clientY - bbox.top;
+        setMousePosition({ x: newMouseX, y: newMouseY });
+
+        if (draggingNode) {
+            setNodes(prevNodes =>
+                prevNodes.map(n =>
+                    n.id === draggingNode.id
+                        ? { ...n, x: e.clientX - draggingNode.offsetX, y: e.clientY - draggingNode.offsetY }
+                        : n
+                )
+            );
+        }
+    }, [draggingNode]);
+
+    // Handle Mouse Up to stop dragging
+    const handleMouseUp = useCallback(() => {
+        setDraggingNode(null);
+    }, []);
+
+    // Effect for mouse move and up listeners
+    useEffect(() => {
+        if (draggingNode) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+        } else {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        }
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [draggingNode, handleMouseMove, handleMouseUp]);
+
+
+    // Add a new node to the flowchart
+    const addNode = (type) => {
+        const newNodeId = Math.max(0, ...nodes.map(n => n.id)) + 1;
+        const newNode = {
+            id: newNodeId,
+            x: 100,
+            y: 100,
+            text: `New ${type}`,
+            type: type,
+        };
+        setNodes([...nodes, newNode]);
+    };
+    
+    // Start creating a connection from a node
+    const startConnection = (e, nodeId) => {
+        e.stopPropagation();
+        setConnectingNode(nodeId);
+    };
+
+    // Complete a connection to another node
+    const completeConnection = (e, nodeId) => {
+        e.stopPropagation();
+        if (connectingNode && connectingNode !== nodeId) {
+            if (!edges.some(edge => (edge.from === connectingNode && edge.to === nodeId))) {
+                 setEdges([...edges, { from: connectingNode, to: nodeId }]);
+            }
+        }
+        setConnectingNode(null);
+    };
+
+    // Delete a node and its connected edges
+    const deleteNode = (nodeId) => {
+        setNodes(nodes.filter(n => n.id !== nodeId));
+        setEdges(edges.filter(e => e.from !== nodeId && e.to !== nodeId));
+    };
+
+    // Handle text change in a node
+    const handleNodeTextChange = (nodeId, newText) => {
+        setNodes(nodes.map(n => n.id === nodeId ? { ...n, text: newText } : n));
+    };
+    
+    // Get node's dimensions based on its type
+    const getNodeDimensions = (type) => {
+        switch (type) {
+            case 'start':
+            case 'end':
+                return { width: 120, height: 50 };
+            case 'decision':
+                return { width: 150, height: 100 };
+            case 'process':
+            default:
+                return { width: 150, height: 80 };
+        }
+    };
+    
+    // Calculate SVG Path for Edges
+    const getEdgePath = (fromNode, toNode) => {
+        if (!fromNode || !toNode) return "";
+        
+        const fromDim = getNodeDimensions(fromNode.type);
+        const toDim = getNodeDimensions(toNode.type);
+
+        const fromCx = fromNode.x + fromDim.width / 2;
+        const fromCy = fromNode.y + fromDim.height / 2;
+        const toCx = toNode.x + toDim.width / 2;
+        const toCy = toNode.y + toDim.height / 2;
+        
+        const dx = toCx - fromCx;
+        const dy = toCy - fromCy;
+        const angle = Math.atan2(dy, dx);
+        
+        const getIntersection = (cx, cy, w, h, angle) => {
+            const halfW = w / 2;
+            const halfH = h / 2;
+            const tanAngle = Math.tan(angle);
+            
+            if (Math.abs(dy) < Math.abs(dx)) {
+                const x = dx > 0 ? halfW : -halfW;
+                const y = x * tanAngle;
+                return { x: cx + x, y: cy + y };
+            } else {
+                const y = dy > 0 ? halfH : -halfH;
+                const x = y / tanAngle;
+                return { x: cx + x, y: cy + y };
+            }
+        };
+        
+        const startPoint = getIntersection(fromCx, fromCy, fromDim.width, fromDim.height, angle);
+        const endPoint = getIntersection(toCx, toCy, toDim.width, toDim.height, Math.atan2(-dy, -dx));
+
+        return `M ${startPoint.x} ${startPoint.y} L ${endPoint.x} ${endPoint.y}`;
+    };
+
+    const fileInputRef = useRef(null);
+    
+    const saveToFile = () => {
+        const data = { nodes, edges };
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type : 'application/json'});
+        const href = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = href;
+        link.download = 'flowchart.json';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(href);
+    };
+
+    const handleFileChange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.nodes && data.edges) {
+                        setNodes(data.nodes);
+                        setEdges(data.edges);
+                    }
+                } catch (error) {
+                    console.error("Error parsing JSON file:", error);
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+    
+    // Component for individual nodes
+    const Node = ({ data }) => {
+        const { id, x, y, text, type } = data;
+        const isEditing = editingNode === id;
+        const dim = getNodeDimensions(type);
+
+        const nodeStyles = {
+            transform: `translate(${x}px, ${y}px)`,
+            width: `${dim.width}px`,
+            height: `${dim.height}px`,
+        };
+
+        const typeClasses = {
+            start: 'bg-green-200 border-green-400 rounded-full',
+            end: 'bg-red-200 border-red-400 rounded-full',
+            process: 'bg-blue-200 border-blue-400 rounded-lg',
+            decision: 'bg-yellow-200 border-yellow-400 transform rotate-45',
+        };
+
+        const contentWrapperClass = type === 'decision' ? 'transform -rotate-45' : '';
+
+        return (
+            <div
+                className={`absolute cursor-pointer border-2 flex items-center justify-center shadow-md transition-all duration-150 ease-in-out hover:shadow-xl hover:scale-105 ${typeClasses[type] || typeClasses.process}`}
+                style={nodeStyles}
+                onMouseDown={(e) => handleNodeMouseDown(e, id)}
+                onClick={(e) => completeConnection(e, id)}
+                onDoubleClick={() => setEditingNode(id)}
+            >
+                <div className={`absolute -top-3 -right-3 p-1 bg-white rounded-full shadow-md cursor-pointer hover:bg-red-100 transition-colors`} onClick={(e) => { e.stopPropagation(); deleteNode(id); }}>
+                    <Trash2 size={14} className="text-red-500" />
+                </div>
+                 <div className={`absolute top-1/2 -translate-y-1/2 -right-6 p-1 bg-white rounded-full shadow-md cursor-ew-resize hover:bg-blue-100 transition-colors`} onMouseDown={(e) => {e.stopPropagation(); startConnection(e, id)}}>
+                     <ArrowRight size={14} className="text-blue-500"/>
+                 </div>
+
+                <div className={`p-2 text-center text-gray-800 text-sm ${contentWrapperClass}`}>
+                    {isEditing ? (
+                        <input
+                            type="text"
+                            value={text}
+                            onChange={(e) => handleNodeTextChange(id, e.target.value)}
+                            onBlur={() => setEditingNode(null)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') setEditingNode(null); }}
+                            className="bg-transparent w-full text-center outline-none"
+                            autoFocus
+                        />
+                    ) : (
+                        text
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // Component for the Toolbar
+    const Toolbar = () => (
+        <div className="absolute top-4 left-4 bg-white p-2 rounded-lg shadow-xl flex flex-col gap-2 border border-gray-200 z-10">
+            <h3 className="font-bold text-center text-gray-700">Add Nodes</h3>
+            <button onClick={() => addNode('start')} className="flex items-center gap-2 p-2 rounded-md bg-green-100 hover:bg-green-200 transition-colors text-green-800">
+                <Plus size={16} /> Start/End
+            </button>
+            <button onClick={() => addNode('process')} className="flex items-center gap-2 p-2 rounded-md bg-blue-100 hover:bg-blue-200 transition-colors text-blue-800">
+                <Plus size={16} /> Process
+            </button>
+            <button onClick={() => addNode('decision')} className="flex items-center gap-2 p-2 rounded-md bg-yellow-100 hover:bg-yellow-200 transition-colors text-yellow-800">
+                <Plus size={16} /> Decision
+            </button>
+             <div className="border-t my-2"></div>
+             <h3 className="font-bold text-center text-gray-700">File</h3>
+             <button onClick={saveToFile} className="flex items-center gap-2 p-2 rounded-md bg-gray-100 hover:bg-gray-200 transition-colors text-gray-800">
+                <Save size={16} /> Save
+            </button>
+             <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-2 p-2 rounded-md bg-gray-100 hover:bg-gray-200 transition-colors text-gray-800">
+                <Upload size={16} /> Load
+            </button>
+             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json" />
+        </div>
+    );
+
+    return (
+        <div className="w-full h-screen bg-gray-50 font-sans flex flex-col">
+             <header className="bg-white shadow-md p-4 z-20">
+                <h1 className="text-2xl font-bold text-gray-800 text-center">Flow Chart Builder</h1>
+            </header>
+            <div className="flex-grow relative">
+                <Toolbar />
+                <div ref={flowChartRef} className="w-full h-full relative overflow-hidden bg-dots" onClick={() => setConnectingNode(null)}>
+                    <svg className="absolute w-full h-full top-0 left-0 pointer-events-none" style={{zIndex: -1}}>
+                        <defs>
+                            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#60a5fa" />
+                            </marker>
+                        </defs>
+                         {/* Existing edges */}
+                        {edges.map((edge, i) => {
+                            const fromNode = nodes.find(n => n.id === edge.from);
+                            const toNode = nodes.find(n => n.id === edge.to);
+                            if (!fromNode || !toNode) return null;
+                            const path = getEdgePath(fromNode, toNode);
+                            return <path key={i} d={path} stroke="#60a5fa" strokeWidth="2" fill="none" markerEnd="url(#arrow)" />;
+                        })}
+                        {/* Edge being drawn */}
+                        {connectingNode && (
+                            (() => {
+                                const fromNode = nodes.find(n => n.id === connectingNode);
+                                if (!fromNode) return null;
+                                const fromDim = getNodeDimensions(fromNode.type);
+                                return <line 
+                                    x1={fromNode.x + fromDim.width/2} 
+                                    y1={fromNode.y + fromDim.height/2} 
+                                    x2={mousePosition.x} 
+                                    y2={mousePosition.y} 
+                                    stroke="#fb923c" strokeWidth="2" strokeDasharray="5,5" />;
+                             })()
+                        )}
+                    </svg>
+
+                    {nodes.map(node => (
+                        <Node key={node.id} data={node} />
+                    ))}
+                </div>
+            </div>
+             <style>{`
+                .bg-dots {
+                    background-color: #f9fafb;
+                    background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+                    background-size: 20px 20px;
+                }
+             `}</style>
+        </div>
+    );
+}
+
